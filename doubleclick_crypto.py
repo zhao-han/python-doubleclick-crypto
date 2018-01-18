@@ -268,7 +268,7 @@ class DoubleClickCrypto(object):
                 pad_page = six.binary_type(pad[self.COUNTER_PAGESIZE: (self.COUNTER_PAGESIZE + counter_size)])
                 h.update(pad_page)
 
-            pad[:self.COUNTER_PAGESIZE] = h.finalize()
+            pad[0:self.COUNTER_PAGESIZE] = h.finalize()
 
             for i in xrange(0, section_size):
                 work_bytes[self.PAYLOAD_START + section_base + i] ^= pad[i]
@@ -361,6 +361,43 @@ class Price(DoubleClickCrypto):
         return self.decode_price_micros(price_cipher) / (float(self.MICROS_PER_CURRENCY_UNIT))
 
 
+
+class AdId(DoubleClickCrypto):
+    """
+    Encryption for Advertising ID.
+
+    <p>See
+    <a href="https://developers.google.com/ad-exchange/rtb/response-guide/decrypt-advertising-id">
+    Decrypting Advertising ID</a>.
+    """
+    def __init__(self, keys, backend=None):
+        super(AdId, self).__init__(keys, backend)
+        self.PAYLOAD_SIZE = 16
+        self.PAYLOAD_END = self.PAYLOAD_START + self.PAYLOAD_SIZE
+
+    def encrypt_adid(self, adid_plain, init_vector=None):
+        if not isinstance(adid_plain, six.binary_type):
+            raise TypeError('AdId should str or bytes type.')
+
+        if len(adid_plain) != self.PAYLOAD_SIZE:
+            raise TypeError('AdId is {} bytes, should be {}'.format(len(adid_plain), self.PAYLOAD_SIZE))
+
+        plain_data = self.init_plain_data(self.PAYLOAD_SIZE, init_vector)
+        plain_data[self.PAYLOAD_START: self.PAYLOAD_END] = adid_plain
+        return six.binary_type(self.encrypt(plain_data))
+
+    def decrypt_adid(self, adid_cipher):
+        if not isinstance(adid_cipher, str):
+            raise TypeError('AdId should str type.')
+
+        if len(adid_cipher) != (self.PAYLOAD_SIZE + self.OVERHEAD_SIZE):
+            raise TypeError('AdId is {} bytes, should be {}'.format(
+                len(adid_cipher), (self.PAYLOAD_SIZE + self.OVERHEAD_SIZE)))
+
+        plain_data = self.decrypt(adid_cipher)
+        return six.binary_type(plain_data[self.PAYLOAD_START:self.PAYLOAD_END])
+
+
 if __name__ == '__main__':
 
     encryption_key = b'cotxnetworks'
@@ -379,33 +416,27 @@ if __name__ == '__main__':
     keys3 = Keys(encryption_key, integrity_key)
     assert(keys == keys3)
 
+    # price encrypt/decrypt test
     price = Price(keys)
 
-    price_value_orign = 1.55
-    print('price_value_orign={}'.format(price_value_orign))
+    price_value_ori = 1.55
+    print('price_value_ori={}'.format(price_value_ori))
 
-    price_cipher = price.encode_price_value(price_value=price_value_orign)
+    price_cipher = price.encode_price_value(price_value=price_value_ori)
     print('price_cipher={}'.format(price_cipher))
 
     price_value = price.decode_price_value(price_cipher)
     print('price_value={}'.format(price_value))
 
+    # adid encrypt/decrypt test
+    import uuid
+    adid = AdId(keys)
 
+    adid_ori = uuid.UUID('12345678-1234-5678-1234-567812345678').bytes
+    print('adid_ori={}'.format(adid_ori))
 
+    adid_cipher = adid.encrypt_adid(adid_ori)
+    print('adid_cipher={}'.format(adid_cipher))
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+    adid_plain = adid.decrypt_adid(adid_cipher)
+    print('adid_plain={}'.format(adid_plain))
